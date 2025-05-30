@@ -16,7 +16,7 @@ async def classify_intent(prompt: str) -> str:
             timeout=10.0,
         )
         reply = response.chat_message.content.strip().lower()
-        return reply if reply in {"play", "open"} else "unknown"
+        return reply if reply in {"play", "open", "run"} else "unknown"
     except asyncio.TimeoutError:
         return "unknown"
     except Exception as e:

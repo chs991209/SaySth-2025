@@ -7,6 +7,9 @@ from agents.registry import (
     url_searcher,
     code_generator_youtube_play,
     code_generator_browser_website_open,
+    run_planner,
+    program_searcher,
+    code_generator_program_shortcut_run
 )
 from agents.model_clients import model_client03, model_client04
 from autogen_agentchat.teams import SelectorGroupChat
@@ -89,6 +92,13 @@ open_team_agents = [
     code_generator_browser_website_open,
 ]
 
+run_team_agents = [
+    user_proxy,
+    run_planner,
+    program_searcher,
+    code_generator_program_shortcut_run,
+]
+
 play_team = SelectorGroupChat(
     participants=play_team_agents,
     model_client=model_client04,
@@ -105,7 +115,15 @@ open_team = SelectorGroupChat(
     candidate_func=open_candidate_func,
 )
 
+run_team= SelectorGroupChat(
+    participants=run_team_agents,
+    model_client=model_client03,
+    selector_prompt=selector_prompt,
+    termination_condition=termination,
+)
+
 intent_to_groupchat = {
     "play": play_team,
     "open": open_team,
+     "run": run_team,
 }
