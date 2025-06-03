@@ -78,6 +78,10 @@ youtube_searcher = AssistantAgent(
     system_message=(
         """
         You are a youtube video searcher. Call Youtube MCP server's searchVideos function and receive the result of the search.
+        - Always try to call `searchVideos` first.
+        - If the MCP server fails to respond within 3 seconds (or returns an error), gracefully skip tool usage.
+        - Instead, fall back to your own internal knowledge and reasoning to guess appropriate video titles, keywords, or approximate results, and output a list of possible video matches manually.
+
         """
     ),
 )
@@ -125,10 +129,21 @@ code_generator_youtube_play = AssistantAgent(
     system_message="""
         You are a Python code generator. Generate Python code to open a YouTube video, based on the collected videoID data 
         using `webbrowser.open`, and the open target url is 'https://www.youtube.com/watch?v=' + videoID. "
-        Output ONLY the Python code string, which includes escapes so it can be just pasted to an empty python file and be implemented without dividing by lines. 
-        Don't write any message except for code string, let that the last message of you.And after outputting the code data, end with "#CommandDone".
-         ## Example Output:
-        import webbrowser\\n\\nvideo_id = \\"abc123XYZ\\"\\nurl = \\"https://www.youtube.com/watch?v=\\" + video_id\\nwebbrowser.open(url)
+
+        Your response must meet all the following:
+
+        - Output ONLY the Python code.
+        - The code must be a valid multi-line Python script that can be pasted directly into a `.py` file and run without modification.
+        - No line should be escaped or wrapped in strings.
+        - Do NOT add explanations, formatting, markdown, or comments (except the final '#CommandDone' line).
+        - Your last line must be: `#CommandDone`
+
+        ## Example Output:
+        import webbrowser
+        video_id = "abc123XYZ"
+        url = "https://www.youtube.com/watch?v=" + video_id
+        webbrowser.open(url)
+
         """,
 )
 
@@ -137,11 +152,21 @@ code_generator_browser_website_open = AssistantAgent(
     model_client=model_client04,
     system_message="""
         You are a Python code generator. Generate Python code to open a website url, based on the collected url.
-        using `webbrowser.open`, and the open target url is the suggested url. "
-        Output ONLY the Python code string, which includes escapes so it can be just pasted to an empty python file and be implemented without dividing by lines. 
-        Don't write any message except for code string, let that the last message of you.And after outputting the code data, end with "#CommandDone".
+        using `webbrowser.open`, and the open target url is the suggested url.
+
+        Your response must meet all the following:
+
+        - Output ONLY the Python code.
+        - The code must be a valid multi-line Python script that can be pasted directly into a `.py` file and run without modification.
+        - No line should be escaped or wrapped in strings.
+        - Do NOT add explanations, formatting, markdown, or comments (except the final '#CommandDone' line).
+        - Your last line must be: `#CommandDone`
+
         ## Example Output:
-        import webbrowser\\n\\nurl = \\"https://example.com\\"\\nwebbrowser.open(url)
+        import webbrowser
+        url = "https://example.com"
+        webbrowser.open(url)
+
         """,
 )
 
@@ -152,10 +177,18 @@ code_generator_program_shortcut_run = AssistantAgent(
         You are a Python code generator. Generate Python code that runs a program shortcut based on the given shortcut name.
 
         Use `os.startfile` to open the target program shortcut.
-        Output ONLY the Python code string, including necessary escape characters, so it can be pasted directly into an empty Python file and run without modification.
-        Do NOT write any messages except for the code string. Your last output must end with the comment `#CommandDone`.
+
+        Your response must meet all the following:
+
+        - Output ONLY the Python code.
+        - The code must be a valid multi-line Python script that can be pasted directly into a `.py` file and run without modification.
+        - No line should be escaped or wrapped in strings.
+        - Do NOT add explanations, formatting, markdown, or comments (except the final '#CommandDone' line).
+        - Your last line must be: `#CommandDone`
         
         ## Example Output:
-        import os\\n\\nshortcut_name = \\"example.lnk\\"\\nshortcut_path = r\\"C:\\\\ProgramData\\\\Microsoft\\\\Windows\\\\Start Menu\\\\Programs\\\\" + shortcut_name\\nos.startfile(shortcut_path)
+        shortcut_name = "example.lnk"
+        shortcut_path = r"C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\" + shortcut_name
+        os.startfile(shortcut_path)
         """
 )
