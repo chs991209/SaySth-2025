@@ -36,8 +36,8 @@ async def search_youtube_videos(
                 print(f"- {tool}")  # should list 'searchVideos'
 
             try:
-                result = await session.call_tool(name="search_videos", arguments= dict({"query": query, "max_results": 3}))
-                print("MCP result:", result)
+                result = await session.call_tool(name="search_videos", arguments= dict({"query": query, "max_results": 1}))
+                # print("MCP result:", result)
                 return result
             except Exception as e:
                 traceback.print_exc()
