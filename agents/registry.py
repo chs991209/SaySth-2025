@@ -26,9 +26,8 @@ play_planner = AssistantAgent(
         You are a planner that understands user intent and coordinates task execution. 
         Break down user goals into actionable steps and forward them to the correct assistant. 
         You should plan like this.
-        First, use YoutubeSearchAgent to search youtube videos, and let the YoutubeVideoIdExtractor to find out the first videoId.
-        And after that finding out the first videoId, the CodeGeneratorAgent's generation of the code is the last task of this groupchat.
-        So let the CodeGeneratorAgent generate python code string with that videoID data.
+        First, have YoutubeVideoIdFinder search for and extract the first videoId in a single step. 
+        Then, have the CodeGeneratorAgent generate Python code using that videoID, as before.
     """,
 )
 
@@ -38,7 +37,6 @@ open_planner = AssistantAgent(
     model_client=model_client03,
     system_message="""
         You are a planner that understands user intent and coordinates task execution. 
-        Break down user goals into actionable steps and forward them to the correct assistant. 
         You should plan like this.
         First, find out a suggestion website url related to user's prompt.
         And after that, the CodeGeneratorAgent's generation of the code is the last task of this groupchat.
@@ -47,28 +45,18 @@ open_planner = AssistantAgent(
 )
 
 # Play Process Agents
-youtube_searcher = AssistantAgent(
-    name="YoutubeSearchAgent",
+youtube_videoid_finder = AssistantAgent(
+    name="YoutubeVideoIdFinder",
     model_client=model_client03,
     tools=[youtube_tools.search_youtube_tool],
     system_message=(
         """
-        You are a youtube video searcher. Call Youtube MCP server's searchVideos function and receive the result of the search.
-        """
-    ),
-)
-
-videoId_extractor = AssistantAgent(
-    name="YoutubeVideoIdExtractor",
-    model_client=model_client04,
-    system_message=(
-        """
-        You are an extractor for navigating the list of the youtube search result.
-        Find the first result of the youtube search results.
-        The list of the results is composed as structure like [{}, {}].
-        You should find the { "id": { "videoId": ... }} and the  "videoId" key's value of the first result, which is index 0.
-        When you find 'videoId' key in the dictionary inside the result, get that videoId value and stop your work
-
+        You are a YouTube video search+extract agent.
+        1. Use the search_youtube_tool with the provided query.
+        2. From the returned search result, extract ONLY the first video's 'videoId'.
+        3. Respond with exactly: videoID: <video id> (replace <video id> with the actual id) and nothing else.
+        If any step fails, respond with "videoID: ERROR".
+        Output nothing else—no explanation, no JSON, no code, just the above format.
         """
     ),
 )
@@ -76,7 +64,7 @@ videoId_extractor = AssistantAgent(
 # Open Process Agents
 url_searcher = AssistantAgent(
     name="SuggestionWebsiteUrlSearchAgent",
-    model_client=model_client03,
+    model_client=model_client04,
     system_message="""
     You are a url searcher.
     Find a suggestible website url for user's prompt.
@@ -86,19 +74,31 @@ url_searcher = AssistantAgent(
 
 code_generator_youtube_play = AssistantAgent(
     name="CodeGeneratorAgent",
-    model_client=model_client04,
+    model_client=model_client03,
     system_message="""
-        You are a Python code generator. Generate Python code to open a YouTube video, based on the collected videoID data 
-        using `webbrowser.open`, and the open target url is 'https://www.youtube.com/watch?v=' + videoID. "
-        Output ONLY the Python code string, which includes escapes so it can be just pasted to an empty python file and be implemented without dividing by lines. 
-        Don't write any message except for code string, let that the last message of you.And after outputting the code data, end with "#CommandDone".
-        
-        """,
+    You are a Python code generator. Your only job is to generate Python code that opens a YouTube video, given a video ID variable called videoID.
+    
+    Always output Python code in the following exact format, and nothing else:
+    
+    import webbrowser
+    
+    videoID = '<videoID>'
+    url = 'https://www.youtube.com/watch?v=' + videoID
+    
+    webbrowser.open(url)
+    #CommandDone
+    
+    - Replace <videoID> with the actual video ID value produced by the team (e.g., g36q0ZLvygQ).
+    - Output ONLY the Python code above, as plain text, not in markdown or triple-backticks.
+    - Do not include explanations, comments (except for #CommandDone at the very end), or anything else.
+    - Your reply must be suitable to be pasted into a Python file and run directly.
+    """,
 )
+# Leave the rest of registry.py unchanged
 
 code_generator_browser_website_open = AssistantAgent(
     name="CodeGeneratorAgent",
-    model_client=model_client04,
+    model_client=model_client03,
     system_message="""
         You are a Python code generator. Generate Python code to open a website url, based on the collected url.
         using `webbrowser.open`, and the open target url is the suggested url. "
