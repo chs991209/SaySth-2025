@@ -1,112 +1,62 @@
-# main.py
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from agents.intent import classify_intent
-from agents.groupchat import intent_to_groupchat
-from autogen_agentchat.ui import Console
 import time
-import collections
-import asyncio
+from autogen_agentchat.ui import Console
+from agents.intent import classify_intents_with_keywords
+from agents.groupchat import build_agent_teams
+from agent_utils.groupchat.groupchat_manager import (
+    extract_final_answer,
+    format_team_prompt,
+)
 
 app = FastAPI()
 
-agent_timings = collections.defaultdict(list)
-
-# --- Robust: get agents from the right attribute ---
-def get_team_agents(team):
-    return getattr(team, "participants", None) or getattr(team, "_participants", None)
-
-def patch_agent_generate_reply(agents):
-    import types
-
-    for agent in agents:
-        if hasattr(agent, "generate_reply") and not getattr(agent, "_timed", False):
-            original = agent.generate_reply
-
-            if asyncio.iscoroutinefunction(original):
-                async def timed_generate_reply(self, *args, **kwargs):
-                    start = time.time()
-                    try:
-                        out = await original(*args, **kwargs)
-                    except Exception as e:
-                        raise
-                    finally:
-                        elapsed = time.time() - start
-                        agent_timings[self.name].append(elapsed)
-                        print(f"[AgentTiming] {self.name}: {elapsed:.2f} seconds")
-                    return out
-            else:
-                def timed_generate_reply(self, *args, **kwargs):
-                    start = time.time()
-                    try:
-                        out = original(*args, **kwargs)
-                    except Exception as e:
-                        raise
-                    finally:
-                        elapsed = time.time() - start
-                        agent_timings[self.name].append(elapsed)
-                        print(f"[AgentTiming] {self.name}: {elapsed:.2f} seconds")
-                    return out
-
-            agent.generate_reply = types.MethodType(timed_generate_reply, agent)
-            agent._timed = True  # Avoid double-patching
-
-def extract_final_answer(task_result):
-    code_candidates = []
-    for msg in task_result.messages:
-        if getattr(msg, "type", None) == "TextMessage" and msg.content:
-            content = msg.content.strip()
-            if "#CommandCode" in content:
-                break
-            if content.startswith("{") and content.endswith("}"):
-                continue
-            if content.startswith("```"):
-                content = content.strip("`").replace("python", "").strip()
-            code_candidates.append(content)
-    return code_candidates[-1] if code_candidates else ""
 
 @app.post("/execute")
 async def execute_prompt(request: Request):
+    """
+    프롬프트 실행기
+    HTTPS Request로 온 요청을 수행하는 function입니다.
+    :param request:
+    :return:
+    """
     body = await request.json()
-
     prompt = body.get("prompt", "").strip()
-    print(prompt)
     if not prompt:
         return JSONResponse(content={"error": "Empty prompt"}, status_code=400)
 
-    intent = await classify_intent(prompt)
+    intent_dicts = await classify_intents_with_keywords(
+        prompt
+    )  # 의도 및 키워드 분류기 호출부, coroutine 타입의 객체를 반환합니다.
+    if len(
+        intent_dicts
+    ):  # 의도 및 keyword가 인식되지 않으면 다음 step으로 넘어가지 않습니다.
+        teams = build_agent_teams(
+            intent_dicts
+        )  # 의도별 액션 생성 team 생성부(SelectorGroupChat 타입의 객체)
 
-    if intent == "unknown":
-        return JSONResponse(content={"error": "Intent not recognized"}, status_code=400)
+        start_time = time.time()  # timer start point timestamp
 
-    team = intent_to_groupchat.get(intent)
-    if not team:
-        return JSONResponse(
-            content={"error": "No groupchat found for intent"}, status_code=500
-        )
+        actions_list: list[dict[str, str]] = []  # None은 받지 않습니다.
+        for item, team in zip(intent_dicts, teams):
+            await team.reset()  # 순차적 team별 초기화 부분
+            team_prompt = format_team_prompt(
+                item["intent"], item["keywords"]
+            )  # 팀 별로 프롬프트를 새로 배치하는 부분
+            print(f"[RUNNING TEAM '{item['intent']}'] Prompt: {team_prompt}")
+            task_result = await Console(
+                team.run_stream(task=team_prompt)
+            )  # 액션 생성팀이 작업을 실행하는 부분
+            action = extract_final_answer(task_result)  # 액션 추출기 호출부
+            if action is not None:  # 유의미한 action만 수집합니다.
+                actions_list.append(action)
 
-    # Robust: supports both .participants and ._participants attributes
-    patch_agent_generate_reply(get_team_agents(team))
+        end_time = time.time()  # timer end point timestamp
+        print(f"[GroupChat session duration] {end_time - start_time:.2f} seconds")
 
-    start_time = time.time()
+        if len(actions_list):  # 유의미한 action이 생성돼야 응답합니다(액션이 없을 시
+            return JSONResponse(content={"actions_list": actions_list})
 
-    await team.reset()
-    task_result = await Console(team.run_stream(task=prompt))
-    code = extract_final_answer(task_result)
-    # print(f"Final Command Code:", code)
+        return JSONResponse(content={"error": "No actions found"}, status_code=500)
 
-    end_time = time.time()
-    elapsed = end_time - start_time
-    print(f"[GroupChat session duration] {elapsed:.2f} seconds")
-
-    # --- Print per-agent timing summary ---
-    print("=== Per-Agent Timing Summary ===")
-    for agent, times in agent_timings.items():
-        if times:
-            total = sum(times)
-            avg = total / len(times)
-            print(f"{agent}: total {total:.2f}s, avg {avg:.2f}s, {len(times)} turn(s)")
-    agent_timings.clear()  # Reset for next request
-
-    return JSONResponse(content={"code": code})
+    return JSONResponse(content={"error": "Intent not recognized"}, status_code=400)

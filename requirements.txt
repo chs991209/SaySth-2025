@@ -122,3 +122,5 @@ xlrd==2.0.1
 XlsxWriter==3.2.3
 youtube-transcript-api==1.0.3
 zipp==3.21.0
+
+aiohttp~=3.12.13

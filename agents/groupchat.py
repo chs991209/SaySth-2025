@@ -1,95 +1,161 @@
+from autogen_agentchat.teams import SelectorGroupChat
+
+from agents.intent import merge_keywords_by_intent
+from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination
+
 from agents.registry import (
     user_proxy,
     play_planner,
     open_planner,
-    youtube_videoid_finder,  # <== new
+    execute_planner,
+    youtube_video_searcher,
     url_searcher,
-    code_generator_youtube_play,
-    code_generator_browser_website_open,
+    executable_program_filename_finder,
 )
-from agents.model_clients import model_client03, model_client04
-from autogen_agentchat.teams import SelectorGroupChat
-from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination
 
-selector_prompt = """You are managing a team of agents to perform a task.
-Available agents and their roles:
+# === TEMPLATE SELECTOR PROMPT: ===
+
+selector_prompt_template = """\
+You are managing a team of agent specialists to accomplish a user request.
+Each session has a specific intent -- "{intent}" -- and the following keywords:
+- {keywords}
+
+Roles in this team:
 {roles}
 
-Conversation context so far:
-{history}
+Session requirements:
+- The planner agent will break down the user's request into explicit tasks.
+- For each keyword, a process agent may be assigned to collect or derive a result.
+- Results from all keywords must be gathered, assembled,
+  and the planner agent must output ONE JSON dict with the agent's result type as a single key
+  and a _list_ of results as value, for example:
+  {example_output}
 
-Available participants: {participants}
+- The planner agent must END the output with "#ACTIONSGENERATIONDONE" (on its own line).
 
-Instructions:
-- If the task has not yet been broken down, always select the planner agent.
-- Only select a non-planner agent if a specific task was clearly assigned by the planner.
-- Only select one agent to speak next.
+When not yet broken down, always select the planner agent. Only hand off to process agents when a request is clear.
+Always select only one agent to speak next.
 
-Which agent should respond next?
+Which agent should reply next?
 """
 
-text_mention_termination = TextMentionTermination("#CommandDone")
-max_messages_termination = MaxMessageTermination(max_messages=35)
-termination = text_mention_termination | max_messages_termination
+termination = TextMentionTermination("#ACTIONSGENERATIONDONE") | MaxMessageTermination(
+    200
+)
 
-# === Custom candidate_func ==
 
-def make_candidate_func(planner_agent, non_planner_agents):
+def make_candidate_func(planner_agent, process_agents):
     def candidate_func(messages):
-        # User triggers planning agent first (skip user_proxy if present)
         if messages[-1].source == "user":
             return [planner_agent.name]
-
-        # If previous message is planner, see who was assigned
         last_message = messages[-1]
         if last_message.source == planner_agent.name:
             participants = []
             msg_text = last_message.to_text()
-            for agent in non_planner_agents:
+            for agent in process_agents:
                 if agent.name in msg_text:
                     participants.append(agent.name)
             if participants:
                 return participants
-
-        # Check if all non-planners have spoken; if so, let planner finish
         agents_already_turn = set(msg.source for msg in messages)
-        if all(agent.name in agents_already_turn for agent in non_planner_agents):
+        if all(agent.name in agents_already_turn for agent in process_agents):
             return [planner_agent.name]
+        return [planner_agent.name] + [
+            agent.name
+            for agent in process_agents
+            if agent.name not in agents_already_turn
+        ]
 
-        # Otherwise, all agents are possible
-        return [planner_agent.name] + [agent.name for agent in non_planner_agents]
     return candidate_func
 
 
-# === Actual Teams ===
-play_team_agents = [
-    play_planner,
-    youtube_videoid_finder,
-    code_generator_youtube_play,
-]
-open_team_agents = [
-    open_planner,
-    url_searcher,
-    code_generator_browser_website_open,
-]
+def build_play_team(keywords):
+    roles = """
+- user_proxy: presents the original query/judges completion.
+- PlayPlannerAgent: coordinates below agents and builds the final JSON output.
+- YouTubeVideoSearcherAgent: uses the search_youtube_videos tool to find videoId for each keyword.
+"""
+    example_output = (
+        '{{"open_webbrowser": [ "https://www.youtube.com/watch?v=xxx", ... ]}}'
+    )
+    agents = [user_proxy, play_planner, youtube_video_searcher]
+    prompt = selector_prompt_template.format(
+        intent="play",
+        keywords=", ".join(keywords),
+        roles=roles,
+        example_output=example_output,
+    )
+    return SelectorGroupChat(
+        participants=agents,
+        model_client=play_planner._model_client,
+        selector_prompt=prompt,
+        termination_condition=termination,
+        candidate_func=make_candidate_func(play_planner, agents[2:]),
+    )
 
-play_team = SelectorGroupChat(
-    participants=[user_proxy] + play_team_agents,
-    model_client=model_client04,
-    selector_prompt=selector_prompt,
-    termination_condition=termination,
-    candidate_func=make_candidate_func(play_planner, play_team_agents[1:]),
-)
 
-open_team = SelectorGroupChat(
-    participants=[user_proxy] + open_team_agents,
-    model_client=model_client03,
-    selector_prompt=selector_prompt,
-    termination_condition=termination,
-    candidate_func=make_candidate_func(open_planner, open_team_agents[1:]),
-)
+def build_open_team(keywords):
+    roles = """
+- user_proxy: presents the original query/judges completion.
+- OpenPlannerAgent: coordinates below agents and builds the final JSON output.
+- SuggestionWebsiteUrlSearchAgent: determines the best URL for each keyword/topic.
+"""
+    example_output = '{{"open_webbrowser": [ "https://...", ... ]}}'
+    agents = [user_proxy, open_planner, url_searcher]
+    prompt = selector_prompt_template.format(
+        intent="open",
+        keywords=", ".join(keywords),
+        roles=roles,
+        example_output=example_output,
+    )
+    return SelectorGroupChat(
+        participants=agents,
+        model_client=open_planner._model_client,
+        selector_prompt=prompt,
+        termination_condition=termination,
+        candidate_func=make_candidate_func(open_planner, agents[2:]),
+    )
 
-intent_to_groupchat = {
-    "play": play_team,
-    "open": open_team,
+
+def build_execute_team(keywords):
+    roles = """
+- user_proxy: presents the original query/judges completion.
+- ExecutePlannerAgent: coordinates below agent and builds the final JSON output.
+- ExecuteProgramsParameterAgent: resolves executable file names for each program keyword.
+"""
+    example_output = '{{"execute_programs": [ "Photoshop.exe", "Excel.exe", ... ]}}'
+    agents = [user_proxy, execute_planner, executable_program_filename_finder]
+    prompt = selector_prompt_template.format(
+        intent="execute",
+        keywords=", ".join(keywords),
+        roles=roles,
+        example_output=example_output,
+    )
+    return SelectorGroupChat(
+        participants=agents,
+        model_client=execute_planner._model_client,
+        selector_prompt=prompt,
+        termination_condition=termination,
+        candidate_func=make_candidate_func(
+            execute_planner, [executable_program_filename_finder]
+        ),
+    )
+
+
+TEAM_FACTORY = {
+    "play": build_play_team,
+    "open": build_open_team,
+    "execute": build_execute_team,
 }
+
+
+def build_agent_teams(intent_dicts):
+    merged_intents = merge_keywords_by_intent(intent_dicts, TEAM_FACTORY)
+    print(f"Merged intents: {merged_intents}")
+    teams = []
+    for item in merged_intents:
+        factory = TEAM_FACTORY.get(item["intent"])
+        if factory:
+            team = factory(item["keywords"])
+            teams.append(team)
+    return teams
