@@ -1,6 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-import time
+from fastapi.middleware.cors import CORSMiddleware
 from autogen_agentchat.ui import Console
 from agents.intent import classify_intents_with_keywords
 from agents.groupchat import build_agent_teams
@@ -9,8 +9,19 @@ from agent_utils.groupchat.groupchat_manager import (
     format_team_prompt,
 )
 
+import time
+
+
 app = FastAPI()
 
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Change to actual frontend domain(s) if in production!
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/execute")
 async def execute_prompt(request: Request):
