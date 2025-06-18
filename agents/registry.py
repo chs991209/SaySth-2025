@@ -1,5 +1,5 @@
 from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
-from agents.model_clients import model_client03, model_client04
+from agents.model_clients import model_client00, model_client01, model_client02, model_client03, model_client04
 from tools import youtube_tools
 
 user_proxy = UserProxyAgent(name="user_proxy")
@@ -7,7 +7,7 @@ user_proxy = UserProxyAgent(name="user_proxy")
 # ---- INTENT CLASSIFIER ----
 intent_classifier = AssistantAgent(
     name="IntentWithKeywordsClassifyAgent",
-    model_client=model_client04,
+    model_client=model_client03,
     system_message="""
         You are an intentions and keywords extraction agent.
         Classify a user's prompt into mult:
@@ -37,7 +37,7 @@ intent_classifier = AssistantAgent(
 # planning agent(계획자)
 play_planner = AssistantAgent(
     name="PlayPlannerAgent",
-    model_client=model_client03,
+    model_client=model_client00,
     system_message="""
         You are the planner for YouTube video urls generation task. 
         Your job is to coordinate the following subtasks for every keyword from the user:
@@ -77,7 +77,7 @@ play_planner = AssistantAgent(
 
 open_planner = AssistantAgent(
     name="OpenPlannerAgent",
-    model_client=model_client03,
+    model_client=model_client00,
     system_message="""
         You are the planner for a YouTube video play utltask. 
         Your job is to coordinate the following subtasks for every keyword from the user:
@@ -115,7 +115,7 @@ open_planner = AssistantAgent(
 
 execute_planner = AssistantAgent(
     name="ExecutePlannerAgent",
-    model_client=model_client04,
+    model_client=model_client00,
     system_message="""
         You are the planner for a Windows program execution preparation task.
         Your job is to coordinate the following subtasks for every program name from the user:
@@ -154,7 +154,7 @@ execute_planner = AssistantAgent(
 
 url_searcher = AssistantAgent(
     name="SuggestionWebsiteUrlSearchAgent",
-    model_client=model_client03,
+    model_client=model_client00,
     system_message="""
     You are a website URL suggestion search and collecting agent.
     
@@ -170,7 +170,7 @@ url_searcher = AssistantAgent(
 # YouTube video agent
 youtube_video_searcher = AssistantAgent(
     name="YouTubeVideoSearcherAgent",
-    model_client=model_client03,
+    model_client=model_client00,
     tools=[youtube_tools.search_youtube_videos],  # tool using search agent
     system_message="""
 You are an assistant with access to the search_youtube_videos tool.
@@ -187,7 +187,7 @@ When given a keyword, do this:
 # Program exe mapping agent
 executable_program_filename_finder = AssistantAgent(
     name="ExecuteProgramsParameterAgent",
-    model_client=model_client03,
+    model_client=model_client00,
     system_message="""
         You are a Windows executable filename resolver.
         When given a program name (for example: '포토샵', 'Photoshop', '메모장', 'notepad'), do the following:
