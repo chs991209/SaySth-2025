@@ -42,19 +42,22 @@ async def execute_prompt(request: Request):
     if len(
         intent_dicts
     ):  # 의도 및 keyword가 인식되지 않으면 다음 step으로 넘어가지 않습니다.
-        teams = build_agent_teams(
+        team_configs = build_agent_teams(
             intent_dicts
         )  # 의도별 액션 생성 team 생성부(SelectorGroupChat 타입의 객체)
 
         start_time = time.time()  # timer start point timestamp
 
         actions_list: list[dict[str, str]] = []  # None은 받지 않습니다.
-        for item, team in zip(intent_dicts, teams):
+        for config in team_configs:
+            intent = config["intent"]
+            keywords = config["keywords"]
+            team = config["team"]
             await team.reset()  # 순차적 team별 초기화 부분
             team_prompt = format_team_prompt(
-                item["intent"], item["keywords"]
+                intent, keywords
             )  # 팀 별로 프롬프트를 새로 배치하는 부분
-            print(f"[RUNNING TEAM '{item['intent']}'] Prompt: {team_prompt}")
+            print(f"[RUNNING TEAM '{intent}'] Prompt: {team_prompt}")
             task_result = await Console(
                 team.run_stream(task=team_prompt)
             )  # 액션 생성팀이 작업을 실행하는 부분

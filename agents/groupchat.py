@@ -152,10 +152,15 @@ TEAM_FACTORY = {
 def build_agent_teams(intent_dicts):
     merged_intents = merge_keywords_by_intent(intent_dicts, TEAM_FACTORY)
     print(f"Merged intents: {merged_intents}")
-    teams = []
+    team_configs = []
     for item in merged_intents:
         factory = TEAM_FACTORY.get(item["intent"])
-        if factory:
+        if factory and item.get("keywords"):  # keywords가 비어있지 않은 경우에만 team 생성
             team = factory(item["keywords"])
-            teams.append(team)
-    return teams
+            # intent 정보와 team을 함께 담아서 반환
+            team_configs.append({
+                "intent": item["intent"],
+                "keywords": item["keywords"],
+                "team": team
+            })
+    return team_configs
