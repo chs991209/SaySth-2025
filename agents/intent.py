@@ -69,8 +69,25 @@ def merge_keywords_by_intent(intent_keyword_list, team_factory) -> List[Dict[str
     for obj in intent_keyword_list:
         intent = obj.get("intent")
         keywords = obj.get("keywords", [])
+        
+        # keywords가 리스트가 아닌 경우 리스트로 변환
+        if not isinstance(keywords, list):
+            if keywords:  # None이 아니고 빈 값이 아닌 경우
+                keywords = [keywords] if isinstance(keywords, str) else [str(keywords)]
+            else:
+                keywords = []
+        
+        # intent가 team_factory에 있고 keywords가 비어있지 않은 경우에만 병합
         if intent in team_factory and keywords:
             merged[intent].extend(keywords)
-    return [
-        {"intent": intent, "keywords": keywords} for intent, keywords in merged.items()
-    ]
+    # 중복 키워드 제거 (순서 유지)
+    result = []
+    for intent, keywords in merged.items():
+        seen = set()
+        unique_keywords = []
+        for kw in keywords:
+            if kw not in seen:
+                seen.add(kw)
+                unique_keywords.append(kw)
+        result.append({"intent": intent, "keywords": unique_keywords})
+    return result

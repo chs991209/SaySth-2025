@@ -39,8 +39,10 @@ Always select only one agent to speak next.
 Which agent should reply next?
 """
 
+# #ACTIONSGENERATIONDONE이 반드시 있어야 종료되도록 설정
+# MaxMessageTermination은 안전장치로만 사용 (더 큰 값으로 설정)
 termination = TextMentionTermination("#ACTIONSGENERATIONDONE") | MaxMessageTermination(
-    200
+    500
 )
 
 
@@ -48,23 +50,48 @@ def make_candidate_func(planner_agent, process_agents):
     def candidate_func(messages):
         if messages[-1].source == "user":
             return [planner_agent.name]
+        
         last_message = messages[-1]
+        msg_text = last_message.to_text()
+        
+        # #ACTIONSGENERATIONDONE이 있으면 종료 (planner만 반환하여 종료 처리)
+        if "#ACTIONSGENERATIONDONE" in msg_text:
+            return [planner_agent.name]
+        
+        # Planner가 메시지를 보낸 경우
         if last_message.source == planner_agent.name:
-            participants = []
-            msg_text = last_message.to_text()
+            # Planner가 process agent를 언급했는지 확인
+            mentioned_agents = []
             for agent in process_agents:
                 if agent.name in msg_text:
-                    participants.append(agent.name)
-            if participants:
-                return participants
-        agents_already_turn = set(msg.source for msg in messages)
-        if all(agent.name in agents_already_turn for agent in process_agents):
+                    mentioned_agents.append(agent.name)
+            
+            if mentioned_agents:
+                # 언급된 agent들이 응답해야 함
+                return mentioned_agents
+            
+            # Planner가 최종 결과를 출력했는지 확인 (JSON 형식)
+            if "{" in msg_text and "}" in msg_text:
+                # 이미 결과를 출력했지만 #ACTIONSGENERATIONDONE이 없으면 planner에게 다시 요청
+                return [planner_agent.name]
+        
+        # Process agent가 응답한 경우, planner로 돌아가기
+        if last_message.source in [agent.name for agent in process_agents]:
             return [planner_agent.name]
-        return [planner_agent.name] + [
+        
+        # 기본적으로 planner와 아직 응답하지 않은 process agents 반환
+        agents_already_turn = set(msg.source for msg in messages)
+        remaining_agents = [
             agent.name
             for agent in process_agents
             if agent.name not in agents_already_turn
         ]
+        
+        # 아직 응답하지 않은 agent가 있으면 그들을 우선, 없으면 planner
+        if remaining_agents:
+            return [planner_agent.name] + remaining_agents
+        else:
+            return [planner_agent.name]
 
     return candidate_func
 
@@ -152,10 +179,15 @@ TEAM_FACTORY = {
 def build_agent_teams(intent_dicts):
     merged_intents = merge_keywords_by_intent(intent_dicts, TEAM_FACTORY)
     print(f"Merged intents: {merged_intents}")
-    teams = []
+    team_configs = []
     for item in merged_intents:
         factory = TEAM_FACTORY.get(item["intent"])
-        if factory:
+        if factory and item.get("keywords"):  # keywords가 비어있지 않은 경우에만 team 생성
             team = factory(item["keywords"])
-            teams.append(team)
-    return teams
+            # intent 정보와 team을 함께 담아서 반환
+            team_configs.append({
+                "intent": item["intent"],
+                "keywords": item["keywords"],
+                "team": team
+            })
+    return team_configs
