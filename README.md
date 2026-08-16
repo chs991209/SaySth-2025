@@ -1,6 +1,10 @@
 # SaySth-2025
 Cap Stone Project in 2025 
 
+# You would better go to this repository.
+
+[New repo](https://github.com/chs991209/AgenticAIforPC)
+
 ## 프로젝트 구조
 
 - `main.py`: FastAPI 서버 엔트리포인트
