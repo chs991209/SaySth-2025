@@ -5,6 +5,10 @@ Cap Stone Project in 2025
 
 [New repo](https://github.com/chs991209/AgenticAIforPC)
 
+## 사용 모델
+
+이 시스템의 Agentic AI는 OpenAI **`gpt-4.1-nano`** 모델을 사용합니다 (`autogen_ext`의 `OpenAIChatCompletionClient` 기반). 에이전트별로 temperature를 0.0 ~ 0.4로 다르게 설정하여 사용합니다 (`agents/model_clients.py` 참고).
+
 ## 프로젝트 구조
 
 - `main.py`: FastAPI 서버 엔트리포인트
